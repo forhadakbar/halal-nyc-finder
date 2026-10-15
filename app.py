@@ -12,7 +12,7 @@ import streamlit as st
 
 from agent import Concierge
 from data import cache_mtime, load
-from halal import add_address, add_match_reason, grade_label
+from halal import TIER_BADGE, TIER_COLOR, TIER_NOTE, add_address, add_match_reason, grade_label
 
 st.set_page_config(page_title="Halal NYC Finder", page_icon="🍽️", layout="wide")
 
@@ -43,11 +43,15 @@ with st.sidebar:
 df = get_data()
 concierge = Concierge(df)
 
+n_confirmed = int((df["halal_tier"] == "confirmed").sum())
+n_likely = int((df["halal_tier"] == "likely").sum())
+
 st.title("🍽️ Halal NYC Finder")
 st.caption(
-    f"{len(df)} Halal restaurants across NYC · "
+    f"{n_confirmed} confirmed halal · {n_likely} likely halal spots across NYC · "
     "NYC Open Data (DOHMH inspections) · hygiene grades included"
 )
+st.caption(TIER_NOTE)
 
 tab_map, tab_chat = st.tabs(["🗺️ Explore", "💬 Ask the concierge"])
 
@@ -58,6 +62,12 @@ with tab_map:
         boroughs = sorted(df["boro"].dropna().unique())
         sel_boro = st.multiselect("Borough", boroughs, default=boroughs)
         sel_grade = st.multiselect("Grade", ["A", "B", "C"], default=["A", "B", "C"])
+        sel_tier = st.multiselect(
+            "Halal confidence",
+            ["confirmed", "likely"],
+            default=["confirmed", "likely"],
+            format_func=lambda t: TIER_BADGE[t],
+        )
         cuisines = sorted(df["cuisine_description"].dropna().unique())
         sel_cuisine = st.multiselect("Cuisine", cuisines)
         query = st.text_input("Search by name")
@@ -65,6 +75,7 @@ with tab_map:
 
     view = df[df["boro"].isin(sel_boro)]
     view = view[view["grade"].isin(sel_grade) | view["grade"].isna()]
+    view = view[view["halal_tier"].isin(sel_tier)]
     if sel_cuisine:
         view = view[view["cuisine_description"].isin(sel_cuisine)]
     if query:
@@ -78,12 +89,14 @@ with tab_map:
             import pydeck as pdk
 
             map_df["grade_display"] = map_df["grade"].fillna("–")
+            map_df["tier_badge"] = map_df["halal_tier"].map(TIER_BADGE)
+            map_df["pin_color"] = map_df["halal_tier"].map(TIER_COLOR)
             layer = pdk.Layer(
                 "ScatterplotLayer",
                 data=map_df,
                 get_position=["longitude", "latitude"],
                 get_radius=150,
-                get_color=[230, 70, 70],
+                get_color="pin_color",
                 pickable=True,
             )
             # Explicit view over NYC — st.map's auto-centering can render
@@ -93,13 +106,16 @@ with tab_map:
                 pdk.Deck(
                     layers=[layer],
                     initial_view_state=view_state,
-                    tooltip={"text": "{dba}\n{boro} · Grade {grade_display}"},
+                    tooltip={"text": "{dba}\n{tier_badge} · {boro} · Grade {grade_display}"},
                 )
             )
         else:
             st.info("No locations to show for these filters.")
         for _, r in view.head(25).iterrows():
-            with st.expander(f"{r['dba'].title()} — {r['boro']} · Grade {grade_label(r['grade'])}"):
+            with st.expander(
+                f"{TIER_BADGE[r['halal_tier']].split(' ', 1)[0]} {r['dba'].title()} — "
+                f"{r['boro']} · Grade {grade_label(r['grade'])}"
+            ):
                 st.write(f"**Address:** {r['address']}")
                 st.write(f"**Cuisine:** {r['cuisine_description']}")
                 score = int(r["score"]) if pd.notna(r["score"]) else "—"
@@ -137,6 +153,6 @@ with tab_chat:
 st.divider()
 st.caption(
     "Data: NYC Open Data · DOHMH Restaurant Inspection Results. "
-    "Halal spots are identified when 'halal' appears in the business name or cuisine — "
-    "an undercount, documented in the README."
+    "🟢 confirmed halal (name/cuisine says halal) · "
+    "🟡 likely halal by cuisine — verify before visiting."
 )

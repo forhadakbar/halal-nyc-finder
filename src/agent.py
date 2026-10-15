@@ -129,11 +129,13 @@ def format_answer(rows: pd.DataFrame) -> str:
     for _, r in rows.iterrows():
         grade = r["grade"] if r["grade"] in GRADES else "ungraded"
         score = f"score {int(r['score'])}" if pd.notna(r["score"]) else "no score"
+        tier = "🟢" if r.get("halal_tier") == "confirmed" else "🟡"
         lines.append(
-            f"• **{r['dba'].title()}** — {r['boro']}, grade {grade} ({score})\n"
+            f"{tier} **{r['dba'].title()}** — {r['boro']}, grade {grade} ({score})\n"
             f"  {r.get('address', '')} · {r.get('cuisine_description', '')}"
         )
-    return "\n".join(lines)
+    note = "\n_🟢 confirmed halal · 🟡 likely halal by cuisine — verify before visiting._"
+    return "\n".join(lines) + note
 
 
 class Concierge:

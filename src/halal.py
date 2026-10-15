@@ -51,3 +51,22 @@ def add_address(df: pd.DataFrame) -> pd.DataFrame:
 
 def grade_label(grade) -> str:
     return grade if grade in ("A", "B", "C") else "Not graded"
+
+
+TIER_BADGE = {
+    "confirmed": "🟢 Confirmed halal",
+    "likely": "🟡 Likely halal",
+}
+
+TIER_NOTE = "🟡 = likely halal by cuisine — please verify before visiting."
+
+
+def tier_badge(tier: str) -> str:
+    return TIER_BADGE.get(tier, tier)
+
+
+# Map pin colors by tier: green = confirmed, amber = likely.
+TIER_COLOR = {
+    "confirmed": [40, 170, 90],
+    "likely": [230, 170, 40],
+}

@@ -32,6 +32,20 @@ HALAL_WHERE = (
     "upper(cuisine_description) like '%HALAL%'"
 )
 
+# Cuisines where halal is the strong norm. These become the "likely halal"
+# tier — clearly labeled as inference, not verification.
+LIKELY_HALAL_CUISINES = [
+    "Pakistani", "Bangladeshi", "Middle Eastern", "Turkish",
+    "Afghan", "Moroccan", "Egyptian", "Indian", "Mediterranean",
+]
+
+HALAL_WHERE = (
+    HALAL_WHERE
+    + " OR upper(cuisine_description) in ("
+    + ",".join(f"'{c.upper()}'" for c in LIKELY_HALAL_CUISINES)
+    + ")"
+)
+
 
 def fetch_halal_inspections() -> pd.DataFrame:
     """Download every inspection record mentioning Halal (paginated)."""
@@ -75,6 +89,16 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         df[col] = pd.to_datetime(df[col], errors="coerce")
     df["grade"] = df["grade"].where(df["grade"].isin(["A", "B", "C"]))
     df["boro"] = df["boro"].replace({"0": "Unknown"})
+
+    # Two-tier halal labeling.
+    #   confirmed: the word "halal" is in the name or cuisine — high precision.
+    #   likely:    cuisine is one where halal is the strong norm (Pakistani,
+    #              Bangladeshi, Middle Eastern, …) — broader recall, and the
+    #              UI marks these "verify before visiting".
+    name_hit = df["dba"].str.contains("halal", case=False, na=False)
+    cuisine_hit = df["cuisine_description"].str.contains("halal", case=False, na=False)
+    df["halal_tier"] = "likely"
+    df.loc[name_hit | cuisine_hit, "halal_tier"] = "confirmed"
 
     # Latest inspection per restaurant wins — but prefer the most recent
     # *graded* inspection so grade/score aren't empty when a grade exists.

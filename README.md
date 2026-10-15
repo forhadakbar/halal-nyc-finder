@@ -8,8 +8,9 @@ agentic AI** on public data.
 
 ## What it does
 
-- 🗺️ **Explore** — filter 169 Halal restaurants by borough, hygiene grade,
-  cuisine, or name; see them on a map with inspection scores.
+- 🗺️ **Explore** — filter 1,300+ Halal and likely-Halal restaurants by borough,
+  hygiene grade, cuisine, or name; see them on a color-coded map (green =
+  confirmed, amber = likely) with inspection scores.
 - 💬 **Ask the concierge** — a conversational AI agent: *"best graded halal in
   Queens"*, *"halal Indian food in Brooklyn"*. The agent turns plain English
   into structured filters and answers with real data.
@@ -20,10 +21,24 @@ NYC Open Data — [DOHMH Restaurant Inspection Results](https://data.cityofnewyo
 (~297k inspection records). The pipeline keeps the latest inspection per
 restaurant and normalizes grades, scores, and coordinates.
 
-> **Known limitation:** the city publishes no "halal" flag, so Halal spots are
-> identified when the word appears in the business name or cuisine description.
-> This undercounts (many Halal carts never register the word). Future work:
-> expand via cuisine families (Middle Eastern, Bangladeshi, Pakistani, Turkish…).
+### Two-tier halal labeling
+
+The city publishes no "halal" flag, so the app labels in two tiers:
+
+- 🟢 **Confirmed halal** — the word "halal" appears in the business name or
+  cuisine description. High precision.
+- 🟡 **Likely halal** — the cuisine is one where halal is the strong norm
+  (Pakistani, Bangladeshi, Middle Eastern, Turkish, Afghan, Moroccan,
+  Egyptian, Indian, Mediterranean). Broader recall; the UI marks these
+  "verify before visiting".
+
+Cross-checks: Zabihah lists ~340 verified halal restaurants in NYC and a
+commercial scrape counts ~866 — our ~1,300 (confirmed + likely) brackets the
+plausible range, with the uncertainty shown to the user instead of hidden.
+
+> **Known limitations:** coordinates of (0,0) ("Null Island") and anything
+> outside the NYC area are scrubbed in the pipeline — those restaurants stay
+> in the table but get no map pin.
 
 ## How the AI agent works
 
