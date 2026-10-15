@@ -15,6 +15,12 @@ import requests
 API_URL = "https://data.cityofnewyork.us/resource/43nn-pn8j.json"
 CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "halal_restaurants.parquet")
 
+# Columns the cached snapshot must have. When the pipeline gains a new
+# column, an old snapshot on disk (e.g. Streamlit Cloud's persistent
+# filesystem) must be rebuilt, not trusted — otherwise the app crashes
+# on startup with a KeyError.
+REQUIRED_COLUMNS = {"halal_tier"}
+
 # Socrata allows 1000 rows per request for unauthenticated callers.
 PAGE_SIZE = 1000
 MAX_PAGES = 40  # safety cap; ~1.7k halal records expected
@@ -114,12 +120,16 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def load(refresh: bool = False) -> pd.DataFrame:
     """Load the cached dataset, fetching from the API on first run."""
-    if refresh or not os.path.exists(CACHE_PATH):
-        df = clean(fetch_halal_inspections())
-        os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-        df.to_parquet(CACHE_PATH, index=False)
-        return df
-    return pd.read_parquet(CACHE_PATH)
+    if not refresh and os.path.exists(CACHE_PATH):
+        df = pd.read_parquet(CACHE_PATH)
+        if REQUIRED_COLUMNS.issubset(df.columns):
+            return df
+        # Stale cache from before a pipeline change — rebuild instead of
+        # crashing the app on a missing column.
+    df = clean(fetch_halal_inspections())
+    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    df.to_parquet(CACHE_PATH, index=False)
+    return df
 
 
 def cache_mtime() -> float | None:
