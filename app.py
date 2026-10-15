@@ -73,11 +73,31 @@ with tab_map:
 
     with col2:
         st.subheader(f"{len(view)} spots")
-        map_df = view.dropna(subset=["latitude", "longitude"]).rename(
-            columns={"latitude": "lat", "longitude": "lon"}
-        )
+        map_df = view.dropna(subset=["latitude", "longitude"]).copy()
         if not map_df.empty:
-            st.map(map_df[["lat", "lon"]], zoom=10)
+            import pydeck as pdk
+
+            map_df["grade_display"] = map_df["grade"].fillna("–")
+            layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=map_df,
+                get_position=["longitude", "latitude"],
+                get_radius=150,
+                get_color=[230, 70, 70],
+                pickable=True,
+            )
+            # Explicit view over NYC — st.map's auto-centering can render
+            # blank on first load; this always shows the dots immediately.
+            view_state = pdk.ViewState(latitude=40.7128, longitude=-74.0060, zoom=10)
+            st.pydeck_chart(
+                pdk.Deck(
+                    layers=[layer],
+                    initial_view_state=view_state,
+                    tooltip={"text": "{dba}\n{boro} · Grade {grade_display}"},
+                )
+            )
+        else:
+            st.info("No locations to show for these filters.")
         for _, r in view.head(25).iterrows():
             with st.expander(f"{r['dba'].title()} — {r['boro']} · Grade {grade_label(r['grade'])}"):
                 st.write(f"**Address:** {r['address']}")
