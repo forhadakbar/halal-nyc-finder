@@ -66,6 +66,11 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     for col in ("latitude", "longitude"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
+    # Scrub bad coordinates: (0,0) "Null Island" points and anything outside
+    # the NYC area are data-entry errors. Null them so they can't distort the
+    # map — the restaurants themselves stay in the table.
+    in_nyc = df["latitude"].between(40.4, 41.0) & df["longitude"].between(-74.4, -73.5)
+    df.loc[~in_nyc, ["latitude", "longitude"]] = float("nan")
     for col in ("inspection_date", "grade_date", "record_date"):
         df[col] = pd.to_datetime(df[col], errors="coerce")
     df["grade"] = df["grade"].where(df["grade"].isin(["A", "B", "C"]))
