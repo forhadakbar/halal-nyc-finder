@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from agent import Concierge
-from data import load
+from data import cache_mtime, load
 from halal import add_address, add_match_reason, grade_label
 
 st.set_page_config(page_title="Halal NYC Finder", page_icon="🍽️", layout="wide")
@@ -23,6 +23,21 @@ def get_data() -> pd.DataFrame:
     df = add_match_reason(df)
     df = add_address(df)
     return df
+
+
+with st.sidebar:
+    st.subheader("Data")
+    mtime = cache_mtime()
+    if mtime:
+        import datetime
+
+        updated = datetime.datetime.fromtimestamp(mtime).strftime("%b %d, %Y")
+        st.caption(f"Snapshot from {updated}")
+    if st.button("🔄 Refresh data"):
+        with st.spinner("Fetching the latest from NYC Open Data…"):
+            load(refresh=True)
+            st.cache_data.clear()
+        st.rerun()
 
 
 df = get_data()

@@ -93,6 +93,13 @@ def load(refresh: bool = False) -> pd.DataFrame:
     return pd.read_parquet(CACHE_PATH)
 
 
+def cache_mtime() -> float | None:
+    """When the cached dataset was last fetched (epoch seconds), if cached."""
+    if os.path.exists(CACHE_PATH):
+        return os.path.getmtime(CACHE_PATH)
+    return None
+
+
 if __name__ == "__main__":
     df = load(refresh=True)
     print(f"{len(df)} halal restaurants")
