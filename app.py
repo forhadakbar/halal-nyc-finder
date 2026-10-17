@@ -61,11 +61,9 @@ with tab_map:
         st.subheader("Filters")
         boroughs = sorted(df["boro"].dropna().unique())
         sel_boro = st.multiselect("Borough", boroughs, default=boroughs)
-        zip_codes = sorted(
-            z
-            for z in df["zipcode"].astype(str).str.strip().unique()
-            if z and z.lower() not in ("nan", "none")
-        )
+        zip_all = df["zipcode"].astype(str).str.strip()
+        zip_all = zip_all[~zip_all.str.lower().isin(["nan", "none", "<na>", ""])]
+        zip_codes = sorted(zip_all.unique())
         sel_zip = st.multiselect("ZIP code", zip_codes, default=zip_codes)
         sel_grade = st.multiselect("Grade", ["A", "B", "C"], default=["A", "B", "C"])
         sel_tier = st.multiselect(
