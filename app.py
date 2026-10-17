@@ -27,17 +27,24 @@ GRADE_STYLE = {
 }
 
 
-def grade_pill(grade: str) -> str:
-    """Colored grade badge for the list cards (Zabihah-style)."""
+def grade_pill(grade: str, detail=None) -> str:
+    """Colored grade badge for the list cards (Zabihah-style).
+
+    When there is no A/B/C letter grade, say why: the city marks new or
+    not-yet-graded spots N (not yet graded) and Z/P (grade pending).
+    """
     if grade in GRADE_STYLE:
         return (
             f'<span style="{GRADE_STYLE[grade]}padding:3px 12px;'
             'border-radius:999px;font-weight:800;font-size:14px;'
             f'white-space:nowrap;">Grade {grade}</span>'
         )
+    label = {"Z": "Grade pending", "P": "Grade pending", "N": "Not yet graded"}.get(
+        str(detail).strip().upper(), "Not graded"
+    )
     return (
         '<span style="background:#6c757d;color:#fff;padding:3px 12px;'
-        'border-radius:999px;font-size:13px;white-space:nowrap;">Not graded</span>'
+        f'border-radius:999px;font-size:13px;white-space:nowrap;">{label}</span>'
     )
 
 
@@ -76,27 +83,29 @@ with st.sidebar:
             st.cache_data.clear()
         st.rerun()
 
-    st.divider()
-    st.subheader("Filters")
-    boroughs = sorted(df["boro"].dropna().unique())
-    sel_boro = st.multiselect("Borough", boroughs, default=boroughs)
-    # Drop missing first: on pandas 3.x astype(str) leaves float NaN
-    # untouched, so stringify only after notna().
-    zip_all = df["zipcode"]
-    zip_all = zip_all[zip_all.notna()].astype(str).str.strip()
-    zip_all = zip_all[~zip_all.str.lower().isin(["none", "<na>", ""])]
-    zip_codes = sorted(zip_all.unique())
-    sel_zip = st.multiselect("ZIP code", zip_codes, default=zip_codes)
-    sel_grade = st.multiselect("Grade", ["A", "B", "C"], default=["A", "B", "C"])
-    sel_tier = st.multiselect(
-        "Halal confidence",
-        ["confirmed", "likely"],
-        default=["confirmed", "likely"],
-        format_func=lambda t: TIER_BADGE[t],
-    )
-    cuisines = sorted(df["cuisine_description"].dropna().unique())
-    sel_cuisine = st.multiselect("Cuisine", cuisines)
-    query = st.text_input("Search by name")
+with st.expander("🔍 Filters", expanded=False):
+    f1, f2 = st.columns(2)
+    with f1:
+        boroughs = sorted(df["boro"].dropna().unique())
+        sel_boro = st.multiselect("Borough", boroughs, default=boroughs)
+        sel_grade = st.multiselect("Grade", ["A", "B", "C"], default=["A", "B", "C"])
+        sel_tier = st.multiselect(
+            "Halal confidence",
+            ["confirmed", "likely"],
+            default=["confirmed", "likely"],
+            format_func=lambda t: TIER_BADGE[t],
+        )
+    with f2:
+        # Drop missing first: on pandas 3.x astype(str) leaves float NaN
+        # untouched, so stringify only after notna().
+        zip_all = df["zipcode"]
+        zip_all = zip_all[zip_all.notna()].astype(str).str.strip()
+        zip_all = zip_all[~zip_all.str.lower().isin(["none", "<na>", ""])]
+        zip_codes = sorted(zip_all.unique())
+        sel_zip = st.multiselect("ZIP code", zip_codes, default=zip_codes)
+        cuisines = sorted(df["cuisine_description"].dropna().unique())
+        sel_cuisine = st.multiselect("Cuisine", cuisines)
+        query = st.text_input("Search by name")
     st.caption("Tip: grades run A (best) → C. Lower inspection score = cleaner.")
 
 view = df[df["boro"].isin(sel_boro)]
@@ -154,7 +163,10 @@ elif current == "list":
             with name_col:
                 st.markdown(f"**{r['dba'].title()}**")
             with grade_col:
-                st.markdown(grade_pill(r["grade"]), unsafe_allow_html=True)
+                st.markdown(
+                    grade_pill(r["grade"], r.get("grade_detail")),
+                    unsafe_allow_html=True,
+                )
             st.caption(f"{r['address']}")
             st.caption(
                 f"{TIER_BADGE[r['halal_tier']]} · {r['cuisine_description']} · "

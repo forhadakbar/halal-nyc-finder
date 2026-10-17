@@ -19,7 +19,7 @@ CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "h
 # column, an old snapshot on disk (e.g. Streamlit Cloud's persistent
 # filesystem) must be rebuilt, not trusted — otherwise the app crashes
 # on startup with a KeyError.
-REQUIRED_COLUMNS = {"halal_tier"}
+REQUIRED_COLUMNS = {"halal_tier", "grade_detail"}
 
 # Socrata allows 1000 rows per request for unauthenticated callers.
 PAGE_SIZE = 1000
@@ -93,6 +93,10 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[~in_nyc, ["latitude", "longitude"]] = float("nan")
     for col in ("inspection_date", "grade_date", "record_date"):
         df[col] = pd.to_datetime(df[col], errors="coerce")
+    # Keep the raw non-letter grade (Z/P/N) so the UI can say *why* a
+    # restaurant has no letter grade instead of a flat "Not graded".
+    # N = not yet graded, Z/P = grade pending (DOHMH codes).
+    df["grade_detail"] = df["grade"].mask(df["grade"].isin(["A", "B", "C"]))
     df["grade"] = df["grade"].where(df["grade"].isin(["A", "B", "C"]))
     df["boro"] = df["boro"].replace({"0": "Unknown"})
 
