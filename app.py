@@ -61,6 +61,12 @@ with tab_map:
         st.subheader("Filters")
         boroughs = sorted(df["boro"].dropna().unique())
         sel_boro = st.multiselect("Borough", boroughs, default=boroughs)
+        zip_codes = sorted(
+            z
+            for z in df["zipcode"].astype(str).str.strip().unique()
+            if z and z.lower() not in ("nan", "none")
+        )
+        sel_zip = st.multiselect("ZIP code", zip_codes, default=zip_codes)
         sel_grade = st.multiselect("Grade", ["A", "B", "C"], default=["A", "B", "C"])
         sel_tier = st.multiselect(
             "Halal confidence",
@@ -74,6 +80,7 @@ with tab_map:
         st.caption("Tip: grades run A (best) → C. Lower inspection score = cleaner.")
 
     view = df[df["boro"].isin(sel_boro)]
+    view = view[view["zipcode"].astype(str).str.strip().isin(sel_zip)]
     view = view[view["grade"].isin(sel_grade) | view["grade"].isna()]
     view = view[view["halal_tier"].isin(sel_tier)]
     if sel_cuisine:
