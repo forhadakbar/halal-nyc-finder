@@ -69,6 +69,23 @@ st.caption(
 )
 st.caption(TIER_NOTE)
 
+# --- Grade metrics (whole dataset, not the filtered view) ---
+_total = len(df)
+_n_a = int((df["grade"] == "A").sum())
+_n_b = int((df["grade"] == "B").sum())
+_n_c = int((df["grade"] == "C").sum())
+_n_not_graded = int(df["grade"].isna().sum())
+
+def _pct(n: int) -> str:
+    return f"{(n / _total * 100):.1f}% of all" if _total else ""
+
+_m1, _m2, _m3, _m4, _m5 = st.columns(5)
+_m1.metric("📍 Total spots", f"{_total:,}")
+_m2.metric("🟢 Grade A", f"{_n_a:,}", _pct(_n_a), delta_color="off")
+_m3.metric("🟡 Grade B", f"{_n_b:,}", _pct(_n_b), delta_color="off")
+_m4.metric("🔴 Grade C", f"{_n_c:,}", _pct(_n_c), delta_color="off")
+_m5.metric("⚪ Not yet graded", f"{_n_not_graded:,}", _pct(_n_not_graded), delta_color="off")
+
 with st.sidebar:
     st.subheader("Data")
     mtime = cache_mtime()

@@ -1,5 +1,7 @@
 # 🍽️ Halal NYC Finder
 
+### 🔗 Live app: [halal-nyc-restaurant-finder.streamlit.app](https://halal-nyc-restaurant-finder.streamlit.app)
+
 Find Halal restaurants across New York City — with hygiene grades, an interactive
 map, and an **AI concierge** you can ask in plain English.
 
