@@ -1,0 +1,10 @@
+# Halal NYC Finder — dark is the default look for the whole app.
+# Users can still switch with the in-app 🌙/☀️ button at the top
+# (that choice is carried in the URL as ?theme=light|dark).
+[theme]
+base = "dark"
+primaryColor = "#ff4b2b"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#fafafa"
+font = "sans serif"

@@ -20,6 +20,64 @@ from halal import TIER_BADGE, TIER_COLOR, TIER_NOTE, add_address, add_match_reas
 
 st.set_page_config(page_title="Halal NYC Finder", page_icon="🍽️", layout="wide")
 
+# --- Theme: dark by default, switchable with the top button ------------
+# .streamlit/config.toml sets Streamlit's native base theme to dark.
+# On top of that, the app injects an explicit skin for the chosen mode
+# so the 🌙/☀️ button at the top restyles the whole page (background,
+# sidebar, text, inputs, cards) immediately, and the choice is carried
+# in the URL (?theme=) exactly like the filters, so it survives the
+# ?view= tab switches that start a fresh session.
+_qp_theme_vals = list(st.query_params.get_all("theme"))
+if "theme" not in st.session_state:
+    st.session_state.theme = (
+        _qp_theme_vals[0]
+        if _qp_theme_vals and _qp_theme_vals[0] in ("dark", "light")
+        else "dark"
+    )
+
+
+def _toggle_theme() -> None:
+    st.session_state.theme = (
+        "light" if st.session_state.get("theme", "dark") == "dark" else "dark"
+    )
+
+
+def _skin_css(mode: str) -> str:
+    if mode == "dark":
+        bg, sec, txt, inp, border = "#0e1117", "#262730", "#fafafa", "#262730", "rgba(250,250,250,0.18)"
+    else:
+        bg, sec, txt, inp, border = "#ffffff", "#f0f2f6", "#111827", "#ffffff", "rgba(17,24,39,0.22)"
+    return f"""
+<style>
+[data-testid="stAppViewContainer"] {{ background-color:{bg}; color:{txt}; }}
+[data-testid="stSidebar"] {{ background-color:{sec}; color:{txt}; }}
+[data-testid="stHeader"] {{ background-color:transparent; }}
+[data-testid="stAppViewContainer"] h1, [data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3, [data-testid="stAppViewContainer"] h4,
+[data-testid="stAppViewContainer"] p, [data-testid="stAppViewContainer"] span,
+[data-testid="stAppViewContainer"] label, [data-testid="stAppViewContainer"] li,
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label, [data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {{ color:{txt}; }}
+[data-testid="stAppViewContainer"] .placard {{ color:#111827; }}
+[data-testid="stAppViewContainer"] .placard-head {{ color:#ffffff; }}
+.stButton > button {{ color:{txt}; border-color:{border}; }}
+[data-testid="stAppViewContainer"] div[data-baseweb="select"] > div {{
+  background-color:{inp}; color:{txt}; border-color:{border}; }}
+[data-testid="stAppViewContainer"] div[data-baseweb="input"] {{
+  background-color:{inp}; border-color:{border}; }}
+[data-testid="stAppViewContainer"] input,
+[data-testid="stAppViewContainer"] textarea {{ color:{txt}; }}
+[data-testid="stExpander"] {{ border-color:{border}; }}
+div[data-baseweb="popover"] ul, ul[role="listbox"] {{ background-color:{sec}; }}
+ul[role="listbox"] li {{ color:{txt}; }}
+[data-testid="stChatMessage"] {{ background-color:{sec}; }}
+[data-testid="stChatInput"] textarea {{ background-color:{inp}; color:{txt}; }}
+</style>"""
+
+
+st.markdown(_skin_css(st.session_state.theme), unsafe_allow_html=True)
+
 # Bottom-tab views, switched through the ?view= query param so tabs are
 # real links (bookmarkable, no JS needed).
 VIEWS = {"map": "🗺️ Map", "list": "📋 List", "ask": "💬 Ask"}
@@ -238,6 +296,29 @@ st.caption(
 )
 st.caption(TIER_NOTE)
 
+# --- Top actions: theme toggle + data refresh ---------------------------
+# The sidebar is collapsed/hidden on phones, so both actions live at the
+# top of the dashboard where they're always reachable.
+_url_theme_vals = list(st.query_params.get_all("theme"))
+if not _url_theme_vals or _url_theme_vals[0] != st.session_state.theme:
+    try:
+        st.query_params["theme"] = st.session_state.theme
+    except Exception:
+        pass
+_act_theme, _act_refresh = st.columns(2)
+with _act_theme:
+    st.button(
+        "☀️ Light mode" if st.session_state.theme == "dark" else "🌙 Dark mode",
+        on_click=_toggle_theme,
+        use_container_width=True,
+    )
+with _act_refresh:
+    if st.button("🔄 Refresh data", use_container_width=True):
+        with st.spinner("Fetching the latest from NYC Open Data…"):
+            load(refresh=True)
+            st.cache_data.clear()
+        st.rerun()
+
 # --- Grade metrics (whole dataset, not the filtered view) ---
 _total = len(df)
 _n_a = int((df["grade"] == "A").sum())
@@ -328,11 +409,7 @@ with st.sidebar:
 
         updated = datetime.datetime.fromtimestamp(mtime).strftime("%b %d, %Y")
         st.caption(f"Snapshot from {updated}")
-    if st.button("🔄 Refresh data"):
-        with st.spinner("Fetching the latest from NYC Open Data…"):
-            load(refresh=True)
-            st.cache_data.clear()
-        st.rerun()
+    st.caption("Use 🔄 Refresh data at the top of the page for the latest city data.")
 
 # --- Shared filters, carried in the URL --------------------------------
 # One filter set feeds every view (Map / List / Ask). The catch: the
@@ -521,7 +598,10 @@ if query:
 
 
 def _nav_href(view_key: str) -> str:
-    return "?" + urlencode({**_filter_params, "view": view_key}, doseq=True)
+    params = {**_filter_params, "view": view_key}
+    if st.session_state.get("theme") == "light":
+        params["theme"] = ["light"]
+    return "?" + urlencode(params, doseq=True)
 
 
 nav_links = "".join(
