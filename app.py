@@ -7,6 +7,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+from urllib.parse import urlencode
+
 import pandas as pd
 import streamlit as st
 
@@ -165,16 +167,58 @@ with st.sidebar:
             st.cache_data.clear()
         st.rerun()
 
+# --- Shared filters, carried in the URL --------------------------------
+# One filter set feeds every view (Map / List / Ask). The catch: the
+# bottom nav switches views through plain ?view= links, and following
+# one reloads the app in a fresh Streamlit session — which would reset
+# every filter widget to its default and silently drop the user's
+# selections. So widgets initialise from the URL, and the nav links at
+# the bottom are rebuilt on every run carrying any non-default
+# selection with them. Pick Bangladeshi on Map, tap List, and the List
+# shows only Bangladeshi — and the same back again.
+_QP_NONE = "__none__"
+
+
+def _qp_selection(key, valid):
+    """URL-stored selection for `key`: None if absent, else a list
+    (empty list means the user explicitly selected nothing)."""
+    try:
+        present = key in st.query_params
+    except Exception:
+        present = False
+    if not present:
+        return None
+    raw = list(st.query_params.get_all(key))
+    if _QP_NONE in raw:
+        return []
+    valid_set = set(valid)
+    return [v for v in raw if v in valid_set]
+
+
+def _qp_text(key) -> str:
+    values = list(st.query_params.get_all(key))
+    return values[0] if values else ""
+
+
 with st.expander("🔍 Filters", expanded=False):
     f1, f2 = st.columns(2)
     with f1:
         boroughs = sorted(df["boro"].dropna().unique())
-        sel_boro = st.multiselect("Borough", boroughs, default=boroughs)
-        sel_grade = st.multiselect("Grade", ["A", "B", "C"], default=["A", "B", "C"])
+        _init_boro = _qp_selection("boro", boroughs)
+        sel_boro = st.multiselect(
+            "Borough", boroughs,
+            default=_init_boro if _init_boro is not None else boroughs,
+        )
+        _init_grade = _qp_selection("grade", ["A", "B", "C"])
+        sel_grade = st.multiselect(
+            "Grade", ["A", "B", "C"],
+            default=_init_grade if _init_grade is not None else ["A", "B", "C"],
+        )
+        _init_tier = _qp_selection("tier", ["confirmed", "likely"])
         sel_tier = st.multiselect(
             "Halal confidence",
             ["confirmed", "likely"],
-            default=["confirmed", "likely"],
+            default=_init_tier if _init_tier is not None else ["confirmed", "likely"],
             format_func=lambda t: TIER_BADGE[t],
         )
     with f2:
@@ -184,10 +228,18 @@ with st.expander("🔍 Filters", expanded=False):
         zip_all = zip_all[zip_all.notna()].astype(str).str.strip()
         zip_all = zip_all[~zip_all.str.lower().isin(["none", "<na>", ""])]
         zip_codes = sorted(zip_all.unique())
-        sel_zip = st.multiselect("ZIP code", zip_codes, default=zip_codes)
+        _init_zip = _qp_selection("zip", zip_codes)
+        sel_zip = st.multiselect(
+            "ZIP code", zip_codes,
+            default=_init_zip if _init_zip is not None else zip_codes,
+        )
         cuisines = sorted(df["cuisine_description"].dropna().unique())
-        sel_cuisine = st.multiselect("Cuisine", cuisines)
-        query = st.text_input("Search by name")
+        _init_cuisine = _qp_selection("cuisine", cuisines)
+        sel_cuisine = st.multiselect(
+            "Cuisine", cuisines,
+            default=_init_cuisine if _init_cuisine is not None else [],
+        )
+        query = st.text_input("Search by name", value=_qp_text("q"))
     st.caption("Tip: grades run A (best) → C. Lower inspection score = cleaner.")
 
 view = df[df["boro"].isin(sel_boro)]
@@ -286,8 +338,35 @@ else:  # ask
 # Spacer so the fixed bottom nav never covers content.
 st.markdown("<div style='height:90px'></div>", unsafe_allow_html=True)
 
+# Nav links carry the current filter selections (see the note above the
+# Filters expander) so switching tabs never drops them. Only non-default
+# selections are encoded, to keep the URL short.
+_filter_params: dict[str, list[str]] = {}
+
+
+def _carry(key, selected, full):
+    sel_list = list(selected)
+    if set(sel_list) == set(full):
+        return  # default (everything selected) — nothing to carry
+    _filter_params[key] = sel_list if sel_list else [_QP_NONE]
+
+
+_carry("boro", sel_boro, boroughs)
+_carry("grade", sel_grade, ["A", "B", "C"])
+_carry("tier", sel_tier, ["confirmed", "likely"])
+_carry("zip", sel_zip, zip_codes)
+if sel_cuisine:
+    _filter_params["cuisine"] = list(sel_cuisine)
+if query:
+    _filter_params["q"] = [query]
+
+
+def _nav_href(view_key: str) -> str:
+    return "?" + urlencode({**_filter_params, "view": view_key}, doseq=True)
+
+
 nav_links = "".join(
-    f'<a href="?view={key}" target="_self"'
+    f'<a href="{_nav_href(key)}" target="_self"'
     f' class="{"active" if key == current else ""}">{label}</a>'
     for key, label in VIEWS.items()
 )
