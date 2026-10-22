@@ -2,7 +2,10 @@
 
 Run:  streamlit run app.py
 """
+import html
+import math
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -47,6 +50,166 @@ def grade_pill(grade: str, detail=None) -> str:
     return (
         '<span style="background:#6c757d;color:#fff;padding:3px 12px;'
         f'border-radius:999px;font-size:13px;white-space:nowrap;">{label}</span>'
+    )
+
+
+def _tile_for(lat: float, lon: float, zoom: int = 15):
+    """OSM slippy-map tile URL + the point's pixel offset inside the tile,
+    so a card can show a real mini-map centered on the restaurant."""
+    n = 2**zoom
+    x_float = (lon + 180.0) / 360.0 * n
+    lat_rad = math.radians(lat)
+    y_float = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+    tile_x, tile_y = int(x_float), int(y_float)
+    offset_x = (x_float - tile_x) * 256
+    offset_y = (y_float - tile_y) * 256
+    return f"https://tile.openstreetmap.org/{zoom}/{tile_x}/{tile_y}.png", offset_x, offset_y
+
+
+def _fmt_phone(raw):
+    """'7185232600' -> ('(718) 523-2600', 'tel:+17185232600')."""
+    digits = re.sub(r"\D", "", str(raw or ""))
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}", f"tel:+1{digits}"
+    return (str(raw) if pd.notna(raw) and str(raw) else ""), (f"tel:{digits}" if digits else "")
+
+
+def _score_band(score: int) -> str:
+    if score <= 13:
+        return "A-range score — cleanest inspections"
+    if score <= 27:
+        return "B-range score"
+    return "C-range score — most violations"
+
+
+CARD_CSS = """
+<style>
+.rlist { display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:14px; }
+@media (min-width:1000px) { .rlist { grid-template-columns:1fr 1fr; } }
+.rcard { border:1px solid rgba(128,128,128,0.28); border-radius:16px;
+  overflow:hidden; background:rgba(128,128,128,0.05); }
+.rcard-visual { position:relative; height:150px; overflow:hidden;
+  background:linear-gradient(135deg,#334155,#64748b); }
+.rcard-map { position:absolute; width:512px; height:512px; max-width:none; }
+.rcard-pin { position:absolute; left:50%; top:50%; font-size:26px;
+  transform:translate(-50%,-95%); filter:drop-shadow(0 2px 3px rgba(0,0,0,0.45));
+  pointer-events:none; }
+.rcard-tier { position:absolute; left:10px; top:10px; z-index:2;
+  background:rgba(255,255,255,0.94); color:#1f2937; padding:4px 10px;
+  border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.rcard-gradewrap { position:absolute; right:10px; top:10px; z-index:2; }
+.rcard-attr { position:absolute; right:8px; bottom:6px; z-index:2; font-size:10px;
+  color:#111; background:rgba(255,255,255,0.75); padding:1px 6px; border-radius:6px; }
+.rcard-mono { position:absolute; inset:0; display:flex; align-items:center;
+  justify-content:center; font-size:52px; font-weight:800; color:rgba(255,255,255,0.9); }
+.rcard-body { padding:12px 14px 14px 14px; }
+.rcard-name { font-size:18px; font-weight:800; line-height:1.25; margin-bottom:2px; }
+.rcard-meta { font-size:13px; opacity:0.78; line-height:1.5; }
+.rcard-score { display:flex; align-items:center; gap:8px; margin-top:9px; font-size:13px; }
+.rcard-bar { flex:1; height:6px; border-radius:999px; background:rgba(128,128,128,0.25);
+  overflow:hidden; }
+.rcard-barfill { height:100%; background:#64748b; border-radius:999px; }
+.rcard-actions { display:flex; gap:8px; margin-top:12px; }
+.rbtn { flex:1; text-align:center; padding:9px 8px; border-radius:10px; font-weight:700;
+  font-size:14px; text-decoration:none; border:1px solid rgba(128,128,128,0.45); color:inherit; }
+.rbtn-primary { background:#ff4b2b; border-color:transparent; color:#fff !important; }
+</style>
+"""
+
+
+def _restaurant_card(r) -> str:
+    """One rich List-view card: real mini-map of the restaurant's own
+    location (no stock/cuisine photos), badges, inspection info, and
+    Directions / Call actions."""
+    name_raw = str(r["dba"])
+    name = html.escape(name_raw.title())
+    cuisine = html.escape(str(r["cuisine_description"]))
+    boro = html.escape(str(r["boro"]))
+    address_raw = str(r["address"])
+    address = html.escape(address_raw)
+    tier_badge = html.escape(TIER_BADGE.get(r["halal_tier"], str(r["halal_tier"])))
+
+    lat, lon = r.get("latitude"), r.get("longitude")
+    if pd.notna(lat) and pd.notna(lon):
+        tile_url, ox, oy = _tile_for(float(lat), float(lon))
+        visual_inner = (
+            f'<img class="rcard-map" src="{tile_url}" alt="" loading="lazy" '
+            f'style="left:calc(50% - {ox * 2:.0f}px);top:calc(50% - {oy * 2:.0f}px)" '
+            'onerror="this.remove()">'
+            '<span class="rcard-pin">📍</span>'
+            '<span class="rcard-attr">© OpenStreetMap</span>'
+        )
+    else:
+        visual_inner = f'<div class="rcard-mono">{html.escape(name[:1] or "?")}</div>'
+    visual = (
+        f'<div class="rcard-visual">{visual_inner}'
+        f'<span class="rcard-tier">{tier_badge}</span>'
+        f'<span class="rcard-gradewrap">{grade_pill(r["grade"], r.get("grade_detail"))}</span>'
+        "</div>"
+    )
+
+    zip_raw = r.get("zipcode")
+    zip_txt = ""
+    if pd.notna(zip_raw) and str(zip_raw).strip().lower() not in ("nan", "none", ""):
+        zip_txt = f" · {html.escape(str(zip_raw).strip())}"
+    meta1 = f"{cuisine} · {boro}{zip_txt}"
+
+    insp = r.get("inspection_date")
+    date_txt = ""
+    if pd.notna(insp):
+        try:
+            date_txt = f" · Inspected {insp:%b %d, %Y}"
+        except (TypeError, ValueError):
+            date_txt = ""
+    reason = {
+        "name": "✔ 'Halal' in the name",
+        "cuisine": "✔ 'Halal' in the cuisine listing",
+        "name + cuisine": "✔ 'Halal' in name & cuisine",
+    }.get(str(r.get("halal_match", "")), "")
+    meta2 = f"📍 {address}"
+    meta3 = " · ".join(x for x in [reason, date_txt.lstrip(" ·")] if x)
+
+    score = r.get("score")
+    if pd.notna(score):
+        s = int(score)
+        bar_w = min(s, 42) / 42 * 100
+        score_html = (
+            f'<div class="rcard-score"><span>Score <b>{s}</b></span>'
+            f'<span class="rcard-bar"><span class="rcard-barfill" '
+            f'style="display:block;width:{bar_w:.0f}%"></span></span>'
+            f'<span style="opacity:0.75">{_score_band(s)}</span></div>'
+        )
+    else:
+        score_html = '<div class="rcard-meta" style="margin-top:9px">Inspection score not available yet</div>'
+
+    maps_url = html.escape(
+        "https://www.google.com/maps/search/?"
+        + urlencode({"api": "1", "query": f"{name_raw} {address_raw}"}),
+        quote=True,
+    )
+    phone_disp, tel_href = _fmt_phone(r.get("phone"))
+    call_btn = (
+        f'<a class="rbtn" href="{html.escape(tel_href, quote=True)}">📞 {html.escape(phone_disp)}</a>'
+        if tel_href
+        else ""
+    )
+    actions = (
+        '<div class="rcard-actions">'
+        f'<a class="rbtn rbtn-primary" href="{maps_url}" target="_blank" rel="noopener">🧭 Directions</a>'
+        f"{call_btn}</div>"
+    )
+
+    return (
+        f'<div class="rcard">{visual}<div class="rcard-body">'
+        f'<div class="rcard-name">{name}</div>'
+        f'<div class="rcard-meta">{meta1}</div>'
+        f'<div class="rcard-meta">{meta2}</div>'
+        + (f'<div class="rcard-meta">{html.escape(meta3)}</div>' if meta3 else "")
+        + score_html
+        + actions
+        + "</div></div>"
     )
 
 
@@ -290,22 +453,15 @@ elif current == "list":
     if "list_n" not in st.session_state:
         st.session_state.list_n = 12
     shown = st.session_state.list_n
-    for _, r in view.head(shown).iterrows():
-        score = int(r["score"]) if pd.notna(r["score"]) else "—"
-        with st.container(border=True):
-            name_col, grade_col = st.columns([5, 1.5])
-            with name_col:
-                st.markdown(f"**{r['dba'].title()}**")
-            with grade_col:
-                st.markdown(
-                    grade_pill(r["grade"], r.get("grade_detail")),
-                    unsafe_allow_html=True,
-                )
-            st.caption(f"{r['address']}")
-            st.caption(
-                f"{TIER_BADGE[r['halal_tier']]} · {r['cuisine_description']} · "
-                f"Inspection score {score} (lower is better)"
-            )
+    if view.empty:
+        st.info("No spots match these filters.")
+    else:
+        cards_html = "".join(_restaurant_card(r) for _, r in view.head(shown).iterrows())
+        st.markdown(
+            CARD_CSS + '<div class="rlist">' + cards_html + "</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption("Map images © OpenStreetMap contributors. Photos of the actual restaurants aren't in the city dataset, so each card shows the restaurant's real location instead.")
     if len(view) > shown:
         if st.button(f"Show more ({len(view) - shown} remaining)"):
             st.session_state.list_n = shown + 12
