@@ -79,12 +79,77 @@ _n_not_graded = int(df["grade"].isna().sum())
 def _pct(n: int) -> str:
     return f"{(n / _total * 100):.1f}% of all" if _total else ""
 
-_m1, _m2, _m3, _m4, _m5 = st.columns(5)
-_m1.metric("📍 Total spots", f"{_total:,}")
-_m2.metric("🟢 Grade A", f"{_n_a:,}", _pct(_n_a), delta_color="off")
-_m3.metric("🟡 Grade B", f"{_n_b:,}", _pct(_n_b), delta_color="off")
-_m4.metric("🔴 Grade C", f"{_n_c:,}", _pct(_n_c), delta_color="off")
-_m5.metric("⚪ Not yet graded", f"{_n_not_graded:,}", _pct(_n_not_graded), delta_color="off")
+# KPI cards as a custom CSS grid — st.columns()/st.metric stack into one
+# tall vertical column on phones. Dashboard best practice for KPIs:
+# one number per card, label small above, % context below, and a grid
+# that wraps to fewer columns per row instead of collapsing to one.
+#
+# Color discipline: green/amber already mean halal tier on this page
+# (map pins + badges: green = confirmed, amber = likely), so the KPI
+# strip uses NO grade traffic-light colors and no colored dots — one
+# uniform neutral accent for every card, and the grade letter in the
+# label carries the meaning. A color must mean one thing per screen.
+_kpis = [
+    ("Total spots", _total, "across NYC"),
+    ("Grade A", _n_a, _pct(_n_a)),
+    ("Grade B", _n_b, _pct(_n_b)),
+    ("Grade C", _n_c, _pct(_n_c)),
+    ("Not yet graded", _n_not_graded, _pct(_n_not_graded)),
+]
+_cards = "".join(
+    '<div class="kpi-card">'
+    f'<div class="kpi-label">{label}</div>'
+    f'<div class="kpi-value">{value:,}</div>'
+    f'<div class="kpi-sub">{sub}</div></div>'
+    for label, value, sub in _kpis
+)
+st.markdown(
+    """
+<style>
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin: 4px 0 12px 0;
+}
+.kpi-card {
+    border: 1px solid rgba(128, 128, 128, 0.28);
+    border-top: 3px solid #64748b;
+    border-radius: 12px;
+    padding: 10px 12px 8px 12px;
+    background: rgba(128, 128, 128, 0.07);
+    min-width: 0;
+}
+.kpi-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kpi-value {
+    font-size: clamp(20px, 5vw, 28px);
+    font-weight: 800;
+    line-height: 1.15;
+}
+.kpi-sub { font-size: 12px; opacity: 0.7; white-space: nowrap; }
+@media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 560px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .kpi-card:last-child { grid-column: span 2; }
+    .kpi-label { white-space: normal; }
+}
+</style>
+<div class="kpi-grid">"""
+    + _cards
+    + "</div>",
+    unsafe_allow_html=True,
+)
 
 with st.sidebar:
     st.subheader("Data")
