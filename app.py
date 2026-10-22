@@ -75,8 +75,22 @@ CARD_CSS = """
 .rlist { display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:14px; }
 @media (min-width:1000px) { .rlist { grid-template-columns:1fr 1fr; } }
 .rcard { border:1px solid rgba(128,128,128,0.28); border-radius:16px;
-  overflow:hidden; background:rgba(128,128,128,0.05); }
-.rcard-top { display:flex; justify-content:space-between; align-items:center;
+  overflow:hidden; background:rgba(128,128,128,0.05); display:flex; }
+.rcard-main { flex:1; min-width:0; }
+.placard { flex:none; width:84px; margin:12px 0 12px 12px; align-self:stretch;
+  display:flex; flex-direction:column; background:#ffffff; color:#111827;
+  border:2px solid #111827; border-radius:10px; overflow:hidden; text-align:center; }
+.placard-head { background:#111827; color:#ffffff; font-size:9px; font-weight:800;
+  letter-spacing:0.1em; padding:5px 2px; white-space:nowrap; }
+.placard-letter { flex:1; display:flex; align-items:center; justify-content:center;
+  font-size:52px; font-weight:900; line-height:1; padding:6px 0 2px 0; }
+.placard-foot { font-size:8.5px; font-weight:800; letter-spacing:0.06em;
+  opacity:0.65; padding:0 3px 6px 3px; }
+@media (max-width:560px) {
+  .placard { width:70px; }
+  .placard-letter { font-size:42px; }
+}
+.rcard-top { display:flex; justify-content:flex-start; align-items:center;
   gap:8px; margin-bottom:8px; }
 .rcard-tier { background:rgba(128,128,128,0.12); color:inherit;
   border:1px solid rgba(128,128,128,0.25); padding:4px 10px;
@@ -96,6 +110,30 @@ CARD_CSS = """
 """
 
 
+PLACARD_COLORS = {"A": "#1f9d55", "B": "#cf8a0a", "C": "#d9534f"}
+
+
+def _placard(r) -> str:
+    """Mini version of the official NYC grade sign posted in restaurant
+    windows: dark header, one huge letter, small caption. Ungraded spots
+    get a grey dash with the reason as the caption."""
+    grade = r.get("grade")
+    if grade in PLACARD_COLORS:
+        letter, color, foot = grade, PLACARD_COLORS[grade], "INSPECTION GRADE"
+    else:
+        letter, color = "–", "#6c757d"
+        foot = (
+            "GRADE PENDING"
+            if str(r.get("grade_detail")).strip().upper() in ("Z", "P")
+            else "NOT YET GRADED"
+        )
+    return (
+        '<div class="placard"><div class="placard-head">NYC HEALTH</div>'
+        f'<div class="placard-letter" style="color:{color}">{letter}</div>'
+        f'<div class="placard-foot">{foot}</div></div>'
+    )
+
+
 def _restaurant_card(r) -> str:
     """One List-view card: badges, inspection info, and Directions / Call
     actions. No images at all — per-restaurant map thumbnails made the
@@ -112,7 +150,6 @@ def _restaurant_card(r) -> str:
     top_row = (
         '<div class="rcard-top">'
         f'<span class="rcard-tier">{tier_badge}</span>'
-        f'<span>{grade_pill(r["grade"], r.get("grade_detail"))}</span>'
         "</div>"
     )
 
@@ -168,7 +205,7 @@ def _restaurant_card(r) -> str:
     )
 
     return (
-        f'<div class="rcard"><div class="rcard-body">'
+        f'<div class="rcard">{_placard(r)}<div class="rcard-main"><div class="rcard-body">'
         + top_row
         + f'<div class="rcard-name">{name}</div>'
         f'<div class="rcard-meta">{meta1}</div>'
@@ -176,7 +213,7 @@ def _restaurant_card(r) -> str:
         + (f'<div class="rcard-meta">{html.escape(meta3)}</div>' if meta3 else "")
         + score_html
         + actions
-        + "</div></div>"
+        + "</div></div></div>"
     )
 
 
