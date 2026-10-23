@@ -6,6 +6,7 @@ https://data.cityofnewyork.us/Health/DOHMH-New-York-City-Restaurant-Inspection-R
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -19,7 +20,7 @@ CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "h
 # column, an old snapshot on disk (e.g. Streamlit Cloud's persistent
 # filesystem) must be rebuilt, not trusted — otherwise the app crashes
 # on startup with a KeyError.
-REQUIRED_COLUMNS = {"halal_tier", "grade_detail"}
+REQUIRED_COLUMNS = {"halal_tier", "grade_detail", "violations_json", "history_json"}
 
 # Socrata allows 1000 rows per request for unauthenticated callers.
 PAGE_SIZE = 1000
@@ -27,7 +28,7 @@ MAX_PAGES = 40  # safety cap; ~1.7k halal records expected
 
 FIELDS = [
     "camis", "dba", "boro", "building", "street", "zipcode", "phone",
-    "cuisine_description", "inspection_date", "action",
+    "cuisine_description", "inspection_date", "inspection_type", "action",
     "violation_code", "violation_description", "critical_flag",
     "score", "grade", "grade_date", "record_date",
     "latitude", "longitude",
@@ -110,14 +111,78 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     df["halal_tier"] = "likely"
     df.loc[name_hit | cuisine_hit, "halal_tier"] = "confirmed"
 
+    df["_has_grade"] = df["grade"].notna().astype(int)
+
+    # --- Grade-details payload, built BEFORE the dedupe below throws the
+    # other inspection rows away (each Socrata row is one violation within
+    # an inspection; an inspection = camis + inspection_date).
+    #   violations_json: violations cited at the inspection that ends up
+    #     chosen for the card, so "Grade details" can show *why* the grade.
+    #   history_json: up to 8 past inspections (date, grade, score, type)
+    #     per restaurant.
+    # Stored as JSON strings: plain str columns survive parquet round-trips
+    # on every pandas version (list/struct columns have bitten us before).
+    df["insp_date"] = df["inspection_date"].dt.strftime("%Y-%m-%d").fillna("nodate")
+    df["insp_key"] = df["camis"] + "|" + df["insp_date"]
+
+    viol = df[
+        df["violation_description"].notna()
+        & (df["violation_description"].str.strip() != "")
+    ]
+    viol_by_insp: dict[str, str] = {}
+    if not viol.empty:
+        per_desc = (
+            viol.assign(_crit=(viol["critical_flag"] == "Critical").astype(int))
+            .groupby(["insp_key", "violation_description"], as_index=False)
+            .agg(critical=("_crit", "max"), code=("violation_code", "first"))
+        )
+        for insp, grp in per_desc.groupby("insp_key"):
+            items = [
+                {
+                    "desc": str(r.violation_description).strip(),
+                    "critical": bool(r.critical),
+                    "code": "" if pd.isna(r.code) else str(r.code),
+                }
+                for r in grp.itertuples()
+            ]
+            # Critical violations first — they're what a reader scans for.
+            items.sort(key=lambda v: not v["critical"])
+            viol_by_insp[insp] = json.dumps(items)
+
+    rep = (
+        df.sort_values(["camis", "insp_date", "_has_grade"])
+        .drop_duplicates(["camis", "insp_date"], keep="last")
+        .sort_values(["camis", "insp_date"], ascending=[True, False])
+    )
+    hist_by_camis: dict[str, str] = {}
+    for camis, grp in rep.groupby("camis"):
+        entries = []
+        for r in grp.head(8).itertuples():
+            if r.insp_date == "nodate":
+                continue
+            entries.append(
+                {
+                    "date": r.insp_date,
+                    "grade": None if pd.isna(r.grade) else str(r.grade),
+                    "detail": None if pd.isna(r.grade_detail) else str(r.grade_detail),
+                    "score": None if pd.isna(r.score) else float(r.score),
+                    "type": None
+                    if pd.isna(getattr(r, "inspection_type", None))
+                    else str(r.inspection_type),
+                }
+            )
+        hist_by_camis[camis] = json.dumps(entries)
+
     # Latest inspection per restaurant wins — but prefer the most recent
     # *graded* inspection so grade/score aren't empty when a grade exists.
-    df["_has_grade"] = df["grade"].notna().astype(int)
     df = (
         df.sort_values(["camis", "_has_grade", "inspection_date"])
         .drop_duplicates("camis", keep="last")
         .drop(columns="_has_grade")
     )
+    df["violations_json"] = df["insp_key"].map(viol_by_insp).fillna("[]")
+    df["history_json"] = df["camis"].map(hist_by_camis).fillna("[]")
+    df = df.drop(columns=["insp_key", "insp_date"])
     df = df.reset_index(drop=True)
     return df
 

@@ -3,6 +3,7 @@
 Run:  streamlit run app.py
 """
 import html
+import json
 import os
 import re
 import sys
@@ -164,6 +165,19 @@ CARD_CSS = """
 .rbtn { flex:1; text-align:center; padding:9px 8px; border-radius:10px; font-weight:700;
   font-size:14px; text-decoration:none; border:1px solid rgba(128,128,128,0.45); color:inherit; }
 .rbtn-primary { background:#ff4b2b; border-color:transparent; color:#fff !important; }
+.gdetails { margin-top:10px; border-top:1px solid rgba(128,128,128,0.25); padding-top:8px; }
+.gdetails summary { cursor:pointer; font-weight:700; font-size:14px; }
+.gdetails-body { font-size:13px; line-height:1.55; margin-top:8px; }
+.gdetails-body ul { margin:6px 0 6px 16px; padding:0; }
+.gdetails-body li { margin-bottom:4px; }
+.gsec { font-weight:800; margin-top:11px; }
+.bandwrap { position:relative; margin-top:4px; padding-top:13px; }
+.bandmarker { position:absolute; top:0; transform:translateX(-50%); font-size:10px; }
+.bandbar { display:flex; height:16px; border-radius:6px; overflow:hidden; }
+.bandseg { color:#fff; font-size:10px; font-weight:800; display:flex;
+  align-items:center; justify-content:center; }
+.bandcap { font-size:12px; opacity:0.75; margin-top:4px; }
+.histline { margin:2px 0; }
 </style>
 """
 
@@ -189,6 +203,119 @@ def _placard(r) -> str:
         '<div class="placard"><div class="placard-head">NYC HEALTH</div>'
         f'<div class="placard-letter" style="color:{color}">{letter}</div>'
         f'<div class="placard-foot">{foot}</div></div>'
+    )
+
+
+def _json_list(raw) -> list:
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except (ValueError, TypeError):
+            return []
+    return []
+
+
+def _fmt_iso_date(s) -> str:
+    try:
+        return pd.to_datetime(s).strftime("%b %d, %Y")
+    except (ValueError, TypeError):
+        return str(s)
+
+
+def _grade_details(r) -> str:
+    """The clickable 'Grade details' expander inside each card: what the
+    grade/score mean, the violations behind them, and past inspections.
+    Pure HTML <details> — expands in place, no rerun, no extra load."""
+    grade = r.get("grade")
+    score = r.get("score")
+    has_score = pd.notna(score)
+    s_int = int(score) if has_score else None
+
+    grade_date = r.get("grade_date")
+    gd_txt = ""
+    if pd.notna(grade_date):
+        try:
+            gd_txt = f" · Graded {grade_date:%b %d, %Y}"
+        except (TypeError, ValueError):
+            gd_txt = ""
+    itype = r.get("inspection_type")
+    type_txt = (
+        f'<div class="rcard-meta">Inspection type: {html.escape(str(itype))}</div>'
+        if pd.notna(itype) and str(itype).strip()
+        else ""
+    )
+    if grade in ("A", "B", "C"):
+        head = f"<b>Grade {grade}</b>" + (f" · Score {s_int}" if has_score else "") + gd_txt
+    elif has_score:
+        head = f"<b>Not graded yet</b> · Score {s_int} at the latest inspection" + gd_txt
+    else:
+        head = "<b>No grade or score issued yet</b>"
+
+    band = ""
+    if has_score:
+        pct = min(s_int, 42) / 42 * 100
+        band = (
+            '<div class="bandwrap">'
+            f'<div class="bandmarker" style="left:{pct:.0f}%">▼</div>'
+            '<div class="bandbar">'
+            '<span class="bandseg" style="background:#1f9d55;flex:14">A</span>'
+            '<span class="bandseg" style="background:#cf8a0a;flex:14">B</span>'
+            '<span class="bandseg" style="background:#d9534f;flex:15">C</span>'
+            "</div>"
+            '<div class="bandcap">▼ this score · 0–13 pts = A · 14–27 = B · 28+ = C '
+            "— fewer points means a cleaner inspection</div></div>"
+        )
+
+    violations = _json_list(r.get("violations_json"))
+    if violations:
+        n_crit = sum(1 for v in violations if v.get("critical"))
+        items = ""
+        for v in violations[:10]:
+            mark = "🔴" if v.get("critical") else "•"
+            crit_txt = ' <b style="color:#d9534f">Critical</b>' if v.get("critical") else ""
+            code_txt = (
+                f' <span style="opacity:0.6">[{html.escape(str(v.get("code")))}]</span>'
+                if v.get("code")
+                else ""
+            )
+            items += f"<li>{mark} {html.escape(str(v.get('desc', '')))}{crit_txt}{code_txt}</li>"
+        if len(violations) > 10:
+            items += f"<li>…and {len(violations) - 10} more in the city record</li>"
+        viol_html = (
+            f'<div class="gsec">Violations at this inspection — '
+            f"{len(violations)} cited · {n_crit} critical</div><ul>{items}</ul>"
+        )
+    else:
+        viol_html = (
+            '<div class="gsec">Violations at this inspection</div>'
+            "<div>None recorded — a clean inspection. 🎉</div>"
+        )
+
+    history = _json_list(r.get("history_json"))
+    hist_html = ""
+    if history:
+        lines = ""
+        for h in history[:6]:
+            g = h.get("grade")
+            if g in ("A", "B", "C"):
+                g_txt = f"Grade {g}"
+            elif str(h.get("detail")).upper() in ("Z", "P"):
+                g_txt = "Grade pending"
+            else:
+                g_txt = "Not graded"
+            sc = h.get("score")
+            sc_txt = f" · Score {int(sc)}" if isinstance(sc, (int, float)) else ""
+            lines += (
+                f'<div class="histline">{html.escape(_fmt_iso_date(h.get("date")))}'
+                f" — {g_txt}{sc_txt}</div>"
+            )
+        hist_html = f'<div class="gsec">Inspection history</div>{lines}'
+
+    return (
+        '<details class="gdetails"><summary>📋 Grade details</summary>'
+        f'<div class="gdetails-body"><div>{head}</div>{type_txt}{band}'
+        f"{viol_html}{hist_html}</div></details>"
     )
 
 
@@ -270,6 +397,7 @@ def _restaurant_card(r) -> str:
         f'<div class="rcard-meta">{meta2}</div>'
         + (f'<div class="rcard-meta">{html.escape(meta3)}</div>' if meta3 else "")
         + score_html
+        + _grade_details(r)
         + actions
         + "</div></div></div>"
     )
