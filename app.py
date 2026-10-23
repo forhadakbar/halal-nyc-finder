@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from agent import Concierge
-from data import cache_mtime, load
+from data import DATA_BUILD, cache_mtime, load
 from halal import TIER_BADGE, TIER_COLOR, TIER_NOTE, add_address, add_match_reason, grade_label
 
 st.set_page_config(page_title="Halal NYC Finder", page_icon="🍽️", layout="wide")
@@ -538,6 +538,15 @@ with st.sidebar:
         updated = datetime.datetime.fromtimestamp(mtime).strftime("%b %d, %Y")
         st.caption(f"Snapshot from {updated}")
     st.caption("Use 🔄 Refresh data at the top of the page for the latest city data.")
+    # TEMP DIAGNOSTIC (remove after the grade-details data check):
+    _diag_cols = [c for c in ("violations_json", "history_json", "inspection_type") if c in df.columns]
+    _diag_msg = f"Data build {DATA_BUILD} · detail cols: {', '.join(_diag_cols) if _diag_cols else 'NONE'}"
+    if "violations_json" in df.columns:
+        _sample = df.head(300)
+        _nv = _sample["violations_json"].apply(lambda s: len(_json_list(s)))
+        _nh = _sample["history_json"].apply(lambda s: len(_json_list(s)))
+        _diag_msg += f" · first-300 rows with violations: {int((_nv > 0).sum())}, with history>1: {int((_nh > 1).sum())}"
+    st.caption(_diag_msg)
 
 # --- Shared filters, carried in the URL --------------------------------
 # One filter set feeds every view (Map / List / Ask). The catch: the

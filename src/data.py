@@ -13,6 +13,8 @@ import time
 import pandas as pd
 import requests
 
+DATA_BUILD = "details-v1-2026-10-22"
+
 API_URL = "https://data.cityofnewyork.us/resource/43nn-pn8j.json"
 CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "halal_restaurants.parquet")
 
