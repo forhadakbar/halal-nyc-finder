@@ -404,14 +404,21 @@ def _restaurant_card(r) -> str:
 
 
 @st.cache_data(show_spinner="Loading NYC restaurant data…")
-def get_data() -> pd.DataFrame:
+def get_data(schema_version: str) -> pd.DataFrame:
+    # schema_version (= data.py's DATA_BUILD) is part of the cache key on
+    # purpose: Streamlit Cloud's server process is long-lived and its
+    # cache survives code pushes when a function's own code is unchanged,
+    # so a pipeline change that only touches data.py would otherwise keep
+    # serving the old dataframe forever (bit us 2026-10-22: the live app
+    # ran the new UI against pre-violations data). Bumping DATA_BUILD in
+    # data.py now guarantees a fresh load.
     df = load()
     df = add_match_reason(df)
     df = add_address(df)
     return df
 
 
-df = get_data()
+df = get_data(DATA_BUILD)
 concierge = Concierge(df)
 
 n_confirmed = int((df["halal_tier"] == "confirmed").sum())
