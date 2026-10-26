@@ -666,6 +666,25 @@ with st.expander("🔍 Filters", expanded=False):
             default=_init_cuisine if _init_cuisine is not None else [],
         )
         query = st.text_input("Search by name", value=_qp_text("q"))
+        # Sort control for the list. The old default sorted by raw score
+        # alone, so ungraded spots (which often carry a low or 0 score)
+        # floated to the very top — the list looked ungraded-first with
+        # no indication of why. Default is now Best grade first.
+        _sort_options = {
+            "grade": "Best grade first",
+            "low": "Lowest score first",
+            "high": "Highest score first",
+            "name": "Name A–Z",
+        }
+        _init_sort = _qp_text("sort")
+        if _init_sort not in _sort_options:
+            _init_sort = "grade"
+        sel_sort = st.selectbox(
+            "Sort list by",
+            list(_sort_options),
+            index=list(_sort_options).index(_init_sort),
+            format_func=lambda k: _sort_options[k],
+        )
     st.caption("Tip: grades run A (best) → C. Lower inspection score = cleaner.")
 
 view = df[df["boro"].isin(sel_boro)]
@@ -676,7 +695,19 @@ if sel_cuisine:
     view = view[view["cuisine_description"].isin(sel_cuisine)]
 if query:
     view = view[view["dba"].str.contains(query, case=False, na=False)]
-view = view.sort_values("score")
+if sel_sort == "grade":
+    # Graded first (A → B → C), ungraded last; lowest score first
+    # inside each group. Ungraded spots no longer top the list.
+    _grade_rank = {"A": 0, "B": 1, "C": 2}
+    view = view.assign(
+        _grade_rank=view["grade"].map(_grade_rank).fillna(3)
+    ).sort_values(["_grade_rank", "score"], na_position="last")
+elif sel_sort == "low":
+    view = view.sort_values("score", na_position="last")
+elif sel_sort == "high":
+    view = view.sort_values("score", ascending=False, na_position="last")
+else:  # name
+    view = view.sort_values("dba", na_position="last")
 
 current = st.query_params.get("view", "map")
 if current not in VIEWS:
@@ -713,6 +744,13 @@ if current == "map":
         st.info("No locations to show for these filters.")
 elif current == "list":
     st.subheader(f"📋 {len(view)} spots")
+    _sort_caption = {
+        "grade": "Sorted by: Best grade first (Grade A → B → C, then not yet graded; lowest score first within each grade)",
+        "low": "Sorted by: Lowest score first (lower score = cleaner inspection)",
+        "high": "Sorted by: Highest score first",
+        "name": "Sorted by: Name A–Z",
+    }[sel_sort]
+    st.caption(_sort_caption)
     if "list_n" not in st.session_state:
         st.session_state.list_n = 12
     shown = st.session_state.list_n
@@ -777,6 +815,8 @@ if sel_cuisine:
     _filter_params["cuisine"] = list(sel_cuisine)
 if query:
     _filter_params["q"] = [query]
+if sel_sort != "grade":
+    _filter_params["sort"] = [sel_sort]
 
 
 def _nav_href(view_key: str) -> str:
