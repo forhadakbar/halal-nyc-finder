@@ -469,24 +469,37 @@ def _pct(n: int) -> str:
 # one number per card, label small above, % context below, and a grid
 # that wraps to fewer columns per row instead of collapsing to one.
 #
+# Design (2026-10-26, "too generic" pass): each card gets an identity
+# instead of five identical grey boxes — a ghost grade letter watermark
+# on the grade cards (echoing the placard seals on the list cards), a
+# share-of-total bar under the number, and a hero treatment for Total
+# (brand-orange accent, the only color pop in the strip).
+#
 # Color discipline: green/amber already mean halal tier on this page
 # (map pins + badges: green = confirmed, amber = likely), so the KPI
-# strip uses NO grade traffic-light colors and no colored dots — one
-# uniform neutral accent for every card, and the grade letter in the
-# label carries the meaning. A color must mean one thing per screen.
+# strip uses NO grade traffic-light colors and no colored dots — the
+# bars and accents are slate + brand orange only, and the grade letter
+# in the label carries the meaning. A color must mean one thing per
+# screen.
+def _share(n: int) -> float:
+    return (n / _total * 100) if _total else 0.0
+
+
 _kpis = [
-    ("Total spots", _total, "across NYC"),
-    ("Grade A", _n_a, _pct(_n_a)),
-    ("Grade B", _n_b, _pct(_n_b)),
-    ("Grade C", _n_c, _pct(_n_c)),
-    ("Not yet graded", _n_not_graded, _pct(_n_not_graded)),
+    ("Total spots", _total, "across NYC", "", True),
+    ("Grade A", _n_a, _pct(_n_a), "A", False),
+    ("Grade B", _n_b, _pct(_n_b), "B", False),
+    ("Grade C", _n_c, _pct(_n_c), "C", False),
+    ("Not yet graded", _n_not_graded, _pct(_n_not_graded), "–", False),
 ]
 _cards = "".join(
-    '<div class="kpi-card">'
+    f'<div class="kpi-card{" kpi-hero" if hero else ""}">'
+    f'<div class="kpi-ghost">{ghost}</div>'
     f'<div class="kpi-label">{label}</div>'
     f'<div class="kpi-value">{value:,}</div>'
+    f'<div class="kpi-bar"><span style="width:{_share(value) if not hero else 100:.1f}%"></span></div>'
     f'<div class="kpi-sub">{sub}</div></div>'
-    for label, value, sub in _kpis
+    for label, value, sub, ghost, hero in _kpis
 )
 st.markdown(
     """
@@ -494,18 +507,36 @@ st.markdown(
 .kpi-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 8px;
-    margin: 4px 0 12px 0;
+    gap: 10px;
+    margin: 4px 0 14px 0;
 }
 .kpi-card {
+    position: relative;
+    overflow: hidden;
     border: 1px solid rgba(128, 128, 128, 0.28);
-    border-top: 3px solid #64748b;
-    border-radius: 12px;
-    padding: 10px 12px 8px 12px;
+    border-radius: 16px;
+    padding: 12px 14px 10px 14px;
     background: rgba(128, 128, 128, 0.07);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     min-width: 0;
 }
+.kpi-card.kpi-hero {
+    border-color: rgba(255, 75, 43, 0.55);
+    background: linear-gradient(160deg, rgba(255, 75, 43, 0.16), rgba(128, 128, 128, 0.07) 65%);
+}
+.kpi-ghost {
+    position: absolute;
+    right: 2px;
+    top: -18px;
+    font-size: 76px;
+    font-weight: 900;
+    line-height: 1;
+    opacity: 0.10;
+    pointer-events: none;
+}
+.kpi-hero .kpi-ghost { display: none; }
 .kpi-label {
+    position: relative;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -516,11 +547,27 @@ st.markdown(
     text-overflow: ellipsis;
 }
 .kpi-value {
-    font-size: clamp(20px, 5vw, 28px);
+    position: relative;
+    font-size: clamp(22px, 5vw, 30px);
     font-weight: 800;
     line-height: 1.15;
 }
-.kpi-sub { font-size: 12px; opacity: 0.7; white-space: nowrap; }
+.kpi-bar {
+    position: relative;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(128, 128, 128, 0.25);
+    margin: 6px 0 5px 0;
+    overflow: hidden;
+}
+.kpi-bar span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: #64748b;
+}
+.kpi-hero .kpi-bar span { background: #ff4b2b; }
+.kpi-sub { position: relative; font-size: 12px; opacity: 0.7; white-space: nowrap; }
 @media (max-width: 900px) {
     .kpi-grid { grid-template-columns: repeat(3, 1fr); }
 }
