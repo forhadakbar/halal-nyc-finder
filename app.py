@@ -19,7 +19,16 @@ from agent import Concierge
 from data import DATA_BUILD, cache_mtime, load
 from halal import TIER_BADGE, TIER_COLOR, TIER_NOTE, add_address, add_match_reason, grade_label
 
-st.set_page_config(page_title="Halal NYC Finder", page_icon="🍽️", layout="wide")
+st.set_page_config(
+    page_title="Halal NYC Finder",
+    page_icon="🍽️",
+    layout="wide",
+    # Sidebar starts closed: with the default ("auto") it starts open,
+    # and on a phone it slides OVER the page as a drawer, covering the
+    # map and the leftmost bottom tab (2026-11-02: user could not get
+    # back to Map because the open sidebar hid it).
+    initial_sidebar_state="collapsed",
+)
 
 # --- Theme: dark by default, switchable with the top button ------------
 # .streamlit/config.toml sets Streamlit's native base theme to dark.
@@ -844,7 +853,10 @@ st.markdown(
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 999;
+    /* Above Streamlit's sidebar layer: even when the sidebar is open,
+    the tabs stay visible and tappable instead of sliding underneath
+    it on phones (2026-11-02). */
+    z-index: 1000001;
     display: flex;
     justify-content: space-around;
     align-items: center;
